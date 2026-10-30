@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Website Checker</title>
+<style>
+:root{font-family:system-ui,Arial,sans-serif;color:#172033;background:#f3f6fb}
+body{margin:0;padding:18px}.app{max-width:760px;margin:auto}
+h1{margin:4px 0 6px;font-size:25px}.sub{color:#5c667a;margin:0 0 18px}
+.card{background:#fff;border-radius:14px;padding:16px;margin:12px 0;box-shadow:0 3px 14px #18284812}
+label{display:block;font-size:14px;font-weight:650;margin:10px 0 5px}
+input,select{width:100%;padding:12px;border:1px solid #ccd4e0;border-radius:9px;font-size:16px;box-sizing:border-box;background:#fff}
+.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+button{border:0;border-radius:9px;padding:12px 15px;font-weight:700;font-size:15px;cursor:pointer}
+.primary{background:#1769e0;color:#fff}.secondary{background:#e8eef8;color:#1c355c}.danger{background:#ffe8e8;color:#a22020}
+.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:9px}
+.stat{background:#f3f6fb;border-radius:10px;padding:12px}.stat b{font-size:23px;display:block}.stat span{font-size:12px;color:#5c667a}
+#status{font-weight:700}.log{max-height:260px;overflow:auto;font:13px ui-monospace,monospace;white-space:pre-wrap;background:#111827;color:#d8e2f0;padding:12px;border-radius:10px}
+.warning{background:#fff5d9;border-left:4px solid #e5a400;padding:11px;border-radius:7px;font-size:13px;line-height:1.45}
+small{color:#667085}
+@media(max-width:520px){.row{grid-template-columns:1fr}.stats{grid-template-columns:repeat(3,1fr)}}
+</style></head>
+<body><main class="app">
+<h1>🌐 Website Checker</h1><p class="sub">Kiểm tra trạng thái và thời gian phản hồi — không tạo lượt xem giả.</p>
+<div class="card">
+<div class="warning">Chỉ dùng với website bạn sở hữu hoặc được phép kiểm tra. Bản HTML chạy trong trình duyệt có thể bị giới hạn bởi CORS; khi đó hãy dùng chương trình Python bên dưới. Không có chức năng xoay IP.</div>
+<label for="url">Địa chỉ website</label><input id="url" type="url" placeholder="https://example.com" value="https://example.com">
+<div class="row">
+<div><label for="interval">Khoảng cách kiểm tra (giây, tối thiểu 10)</label><input id="interval" type="number" min="10" max="3600" value="30"></div>
+<div><label for="count">Số lần kiểm tra (1–100)</label><input id="count" type="number" min="1" max="100" value="10"></div>
+</div>
+<div class="actions"><button class="primary" id="start">▶ Bắt đầu</button><button class="danger" id="stop" disabled>■ Dừng</button><button class="secondary" id="clear">Xóa nhật ký</button></div>
+</div>
+<div class="card"><div class="stats">
+<div class="stat"><b id="done">0</b><span>Đã kiểm tra</span></div>
+<div class="stat"><b id="ok">0</b><span>Thành công</span></div>
+<div class="stat"><b id="fail">0</b><span>Lỗi / bị chặn</span></div>
+</div><p>Trạng thái: <span id="status">Sẵn sàng</span></p><p>Thời gian phản hồi gần nhất: <b id="latency">—</b></p></div>
+<div class="card"><b>Nhật ký</b><p class="log" id="log">Chưa có lần kiểm tra nào.</p></div>
+<small>Mẫu HTML chỉ kiểm tra từ trình duyệt hiện tại. Nếu trình duyệt chặn yêu cầu do CORS, dùng Python checker.</small>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+let timer=null, stopped=true, done=0, ok=0, fail=0, target=0;
+function logLine(s){const el=$('log');if(el.textContent==='Chưa có lần kiểm tra nào.')el.textContent='';el.textContent=`${new Date().toLocaleTimeString()}  ${s}\n`+el.textContent;}
+function update(){ $('done').textContent=done;$('ok').textContent=ok;$('fail').textContent=fail;}
+async function check(){
+ if(stopped||done>=target){finish();return}
+ let raw=$('url').value.trim(), url;
+ try{url=new URL(raw);if(!['http:','https:'].includes(url.protocol))throw 0;}catch{logLine('URL không hợp lệ.');$('status').textContent='URL không hợp lệ';finish();return}
+ done++;let start=performance.now();
+ try{
+  // no-cors can establish only that a request was attempted; it cannot reveal HTTP status.
+  await fetch(url.href,{method:'GET',mode:'no-cors',cache:'no-store',redirect:'follow'});
+  let ms=Math.round(performance.now()-start);ok++;$('latency').textContent=ms+' ms';
+  logLine(`Yêu cầu đã gửi; ${ms} ms. Trình duyệt không cung cấp HTTP status ở chế độ này.`);
+  $('status').textContent='Đã gửi yêu cầu (không xác minh được mã HTTP)';
+ }catch(e){fail++;logLine('Không kiểm tra được: '+e.message+' (có thể do mạng/CORS).');$('status').textContent='Lỗi mạng hoặc CORS';}
+ update();
+ if(done>=target||stopped){finish();return}
+ timer=setTimeout(check,Math.max(10,Number($('interval').value)||30)*1000);
+}
+function finish(){stopped=true;if(timer)clearTimeout(timer);timer=null;$('start').disabled=false;$('stop').disabled=true;if(done>=target)$('status').textContent='Hoàn tất';}
+$('start').onclick=()=>{if(!stopped)return;done=ok=fail=0;target=Math.min(100,Math.max(1,Number($('count').value)||1));$('log').textContent='';update();stopped=false;$('start').disabled=true;$('stop').disabled=false;$('status').textContent='Đang kiểm tra…';check();};
+$('stop').onclick=()=>{stopped=true;if(timer)clearTimeout(timer);finish();$('status').textContent='Đã dừng';};
+$('clear').onclick=()=>{$('log').textContent='Chưa có lần kiểm tra nào.';};
+</script></body></html>
